@@ -15,11 +15,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Xml;
-
 using ScriptSharp.Tools.jQueryUIGenerator.Model;
 
 namespace ScriptSharp.Tools.jQueryUIGenerator {
@@ -66,6 +66,8 @@ namespace ScriptSharp.Tools.jQueryUIGenerator {
 
                 XmlNode xmlEntry = document.SelectSingleNode("//entry");
 
+                ProcessIncludeNodes(document, xmlEntry);
+
                 if (xmlEntry == null) {
                     Messages.WriteLine("Failed");
                 }
@@ -77,6 +79,41 @@ namespace ScriptSharp.Tools.jQueryUIGenerator {
             }
 
             return entities;
+        }
+
+        /// <summary>
+        /// Process the xml document and replace the xi:include node with the linked files
+        /// </summary>
+        /// <param name="document">The xml document</param>
+        /// <param name="xmlEntry">The xml document entry point</param>
+        private void ProcessIncludeNodes(XmlDocument document, XmlNode xmlEntry)
+        {
+            XmlNamespaceManager nsmgr = new XmlNamespaceManager(document.NameTable);
+            nsmgr.AddNamespace("xi", "http://www.w3.org/2003/XInclude");
+
+            XmlNodeList includeNodes = xmlEntry.SelectNodes("//xi:include", nsmgr);
+
+            while (includeNodes.Count > 0)
+            {
+                foreach (XmlNode includeNode in includeNodes)
+                {
+                    if (includeNode.Attributes["href"] != null)
+                    {
+                        XmlDocument newDocument = new XmlDocument();
+                        Uri uri = new Uri(Path.GetDirectoryName(includeNode.BaseURI) + Path.DirectorySeparatorChar + includeNode.Attributes["href"].Value);
+
+                        newDocument.Load(Path.GetDirectoryName(includeNode.BaseURI) + Path.DirectorySeparatorChar + includeNode.Attributes["href"].Value);
+
+                        Debug.Assert(newDocument.ChildNodes.Count == 2, "The number of nodes in the document is not valid");
+                        {
+                            XmlNode importNode = includeNode.OwnerDocument.ImportNode(newDocument.ChildNodes[1], true);
+                            includeNode.ParentNode.ReplaceChild(importNode, includeNode);
+                        }
+                    }
+                }
+
+                includeNodes = xmlEntry.SelectNodes("xi:include", nsmgr);
+            }
         }
 
         private Entry ParseEntry(XmlNode xmlEntry) {

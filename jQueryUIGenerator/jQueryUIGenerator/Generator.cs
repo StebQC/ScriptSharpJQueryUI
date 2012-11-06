@@ -15,6 +15,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -72,7 +73,7 @@ namespace ScriptSharp.Tools.jQueryUIGenerator {
             }
 
             RenderEventHandler();
-            RenderJQueryUI();
+            RenderJQueryUI(entries);
             RenderWidgetType(entries);
         }
 
@@ -91,6 +92,11 @@ namespace ScriptSharp.Tools.jQueryUIGenerator {
         }
 
         private void RenderObject(Entry entry) {
+            if (entry.Type == "method")
+            {
+                return; // Skip over the method entry. These objects will be added to the jQueryUI object
+            }
+
             string className = Utils.PascalCase(entry.Name) + @"Object";
 
             string content =
@@ -625,14 +631,14 @@ namespace " + Utils.GetNamespace(null) + @" {
             Utils.CreateFile(DestinationPath, className, content);
         }
 
-        private void RenderJQueryUI() {
+        private void RenderJQueryUI(IList<Entry> entries) {
             string className = "jQueryUI";
 
             string content =
 @"using System;
 using System.Runtime.CompilerServices;
 
-namespace " + Utils.GetNamespace(null) + @" {
+namespace " + Utils.GetNamespace(null) + @" {{
 
     /// <summary>
     /// Top-level jQueryUI methods.
@@ -640,7 +646,7 @@ namespace " + Utils.GetNamespace(null) + @" {
     [Imported]
     [IgnoreNamespace]
     [ScriptName(""$"")]
-    public static class jQueryUI {
+    public static class jQueryUI {{
 
         /// <summary>
         /// Exposes the widget with the specified name on the top-level jQuery API.
@@ -648,8 +654,8 @@ namespace " + Utils.GetNamespace(null) + @" {
         /// <param name=""name"">The name of the widget.</param>
         /// <param name=""widget"">The widget object.</param>
         [ScriptName(""widget.bridge"")]
-        public static void Bridge(string name, object widget) {
-        }
+        public static void Bridge(string name, object widget) {{
+        }}
 
         /// <summary>
         /// Create stateful jQuery plugins using the same abstraction that all jQuery UI widgets.
@@ -657,20 +663,9 @@ namespace " + Utils.GetNamespace(null) + @" {
         /// <param name=""name"">The name of the widget.</param>
         /// <param name=""widget"">The widget object.</param>
         [ScriptName(""widget"")]
-        public static WidgetObject CreateWidget(string name, object widget) {
+        public static WidgetObject CreateWidget(string name, object widget) {{
             return null;
-        }
-
-        /// <summary>
-        /// Create stateful jQuery plugins using the same abstraction that all jQuery UI widgets.
-        /// </summary>
-        /// <param name=""name"">The name of the widget.</param>
-        /// <param name=""baseWidgetType"">The widget type to inherit from.</param>
-        /// <param name=""widget"">The widget object.</param>
-        [ScriptName(""widget"")]
-        public static WidgetObject CreateWidget(string name, WidgetType baseWidgetType, object widget) {
-            return null;
-        }
+        }}
 
         /// <summary>
         /// Create stateful jQuery plugins using the same abstraction that all jQuery UI widgets.
@@ -679,13 +674,55 @@ namespace " + Utils.GetNamespace(null) + @" {
         /// <param name=""baseWidgetType"">The widget type to inherit from.</param>
         /// <param name=""widget"">The widget object.</param>
         [ScriptName(""widget"")]
-        public static WidgetObject CreateWidget(string name, object baseWidgetType, object widget) {
+        public static WidgetObject CreateWidget(string name, WidgetType baseWidgetType, object widget) {{
             return null;
-        }
-    }
-}";
+        }}
+
+        /// <summary>
+        /// Create stateful jQuery plugins using the same abstraction that all jQuery UI widgets.
+        /// </summary>
+        /// <param name=""name"">The name of the widget.</param>
+        /// <param name=""baseWidgetType"">The widget type to inherit from.</param>
+        /// <param name=""widget"">The widget object.</param>
+        [ScriptName(""widget"")]
+        public static WidgetObject CreateWidget(string name, object baseWidgetType, object widget) {{
+            return null;
+        }}
+
+        {0}
+    }}
+}}";
+            string overridenMethodSignature =
+@"
+
+        /// <summary>
+        /// {0}
+        /// </summary>
+        /// <remarks>
+        /// {1}
+        /// </remarks>
+{2}        public jQueryObject {3}({4}) {{
+            return null;
+        }}";
+
+            string overridenMethods = "";
+            foreach (Entry entry in entries.Where(entry => entry.Type == "method"))
+            {
+                foreach (Signature signature in entry.Signatures)
+                {
+                    overridenMethods += string.Format(overridenMethodSignature,
+                        Utils.FormatXmlComment(entry.Description),
+                        Utils.FormatXmlComment(entry.LongDescription),
+                        string.Concat((from arg in signature.Arguments
+                                                          select string.Format("        /// <param name=\"{0}\">{1}</param>" + Environment.NewLine, Utils.PascalCase(arg.Name), arg.Description))), 
+                        Utils.PascalCase(entry.Name),
+                        string.Join(", ", (from arg in signature.Arguments
+                                           select Utils.MapDataType(arg.Type) + " " + Utils.PascalCase(arg.Name)).ToArray()));
+                }
+            }
+
             Messages.WriteLine("Generating " + Path.Combine(DestinationPath, className));
-            Utils.CreateFile(DestinationPath, className, content);
+            Utils.CreateFile(DestinationPath, className, string.Format(content, overridenMethods));
         }
 
         private void RenderWidgetType(IList<Entry> entries) {
